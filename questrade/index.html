@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Returning to KOBLA</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --background: #ffffff;
+        --foreground: #1c1b1a;
+        --muted: #5f5b57;
+        --accent: #1d5fd0;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #181716;
+          --foreground: #f2efeb;
+          --muted: #aaa49d;
+          --accent: #7fb0ff;
+        }
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        box-sizing: border-box;
+        background: var(--background);
+        color: var(--foreground);
+        font:
+          16px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+      main {
+        max-width: 28rem;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin: 0 0 0.5rem;
+      }
+      p {
+        margin: 0 0 0.75rem;
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Questrade connection</h1>
+      <p id="message">Returning to KOBLA&hellip;</p>
+      <p id="fallback" hidden>
+        If KOBLA does not open on its own, make sure it is running on this computer, then
+        <a id="return-link" href="http://127.0.0.1:53127/api/questrade/oauth/callback"
+          >Return to KOBLA</a
+        >.
+      </p>
+      <noscript><p>JavaScript is required to return to KOBLA.</p></noscript>
+    </main>
+    <script>
+      /* eslint-disable camelcase -- OAuth parameter names are snake_case by specification */
+      (function (root, factory) {
+        const exported = factory();
+        if (typeof module === 'object' && module.exports) module.exports = exported;
+        else root.koblaForward = exported;
+      })(typeof self !== 'undefined' ? self : this, function () {
+        const LOOPBACK_CALLBACK_URL = 'http://127.0.0.1:53127/api/questrade/oauth/callback';
+        const ALLOWED_PARAMETERS = ['code', 'state', 'error', 'error_description', 'error_uri'];
+        const MAX_LENGTH = {
+          code: 2048,
+          state: 512,
+          error: 128,
+          error_description: 1024,
+          error_uri: 2048,
+        };
+        const TOKEN = /^[A-Za-z0-9._~+/=-]+$/;
+        // eslint-disable-next-line no-control-regex
+        const NO_CONTROL_CHARACTERS = /^[^\u0000-\u001f\u007f]*$/;
+        const PATTERNS = {
+          code: TOKEN,
+          state: TOKEN,
+          error: /^[A-Za-z0-9._-]+$/,
+          error_description: NO_CONTROL_CHARACTERS,
+          error_uri: NO_CONTROL_CHARACTERS,
+        };
+        const REQUIRED_NON_EMPTY = ['code', 'state', 'error'];
+        const NO_RESULT = 'No authorization result was found in this address.';
+        const INVALID = 'The authorization response was not valid, so it was not forwarded.';
+
+        function buildForwardUrl(search) {
+          const incoming = new URLSearchParams(search);
+          const picked = new Map();
+          ALLOWED_PARAMETERS.forEach(function (name) {
+            const value = incoming.get(name);
+            if (value !== null) picked.set(name, value);
+          });
+
+          if (!picked.has('code') && !picked.has('error')) return { ok: false, message: NO_RESULT };
+          if (picked.has('error')) picked.delete('code');
+          if (!picked.has('state')) return { ok: false, message: INVALID };
+
+          const forwarded = new URLSearchParams();
+          for (const [name, value] of picked) {
+            const tooLong = value.length > MAX_LENGTH[name];
+            const emptyButRequired = value.length === 0 && REQUIRED_NON_EMPTY.includes(name);
+            if (tooLong || emptyButRequired || !PATTERNS[name].test(value)) {
+              return { ok: false, message: INVALID };
+            }
+            forwarded.set(name, value);
+          }
+          return { ok: true, url: LOOPBACK_CALLBACK_URL + '?' + forwarded.toString() };
+        }
+
+        return {
+          LOOPBACK_CALLBACK_URL: LOOPBACK_CALLBACK_URL,
+          ALLOWED_PARAMETERS: ALLOWED_PARAMETERS,
+          buildForwardUrl: buildForwardUrl,
+        };
+      });
+    </script>
+    <script>
+      (function () {
+        var message = document.getElementById('message');
+        var fallback = document.getElementById('fallback');
+        var returnLink = document.getElementById('return-link');
+        var result = koblaForward.buildForwardUrl(window.location.search);
+
+        window.history.replaceState(null, '', window.location.pathname);
+
+        if (!result.ok) {
+          message.textContent = result.message;
+          fallback.hidden = false;
+          return;
+        }
+
+        returnLink.href = result.url;
+        window.location.replace(result.url);
+        window.setTimeout(function () {
+          message.textContent = 'KOBLA has not responded yet.';
+          fallback.hidden = false;
+        }, 4000);
+      })();
+    </script>
+  </body>
+</html>
